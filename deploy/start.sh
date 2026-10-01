@@ -25,7 +25,8 @@ CI=1 $WRANGLER d1 migrations apply DB --local --persist-to "$STATE_DIR" --config
 
 # --local-upstream makes request.url carry the public https://APP_DOMAIN origin,
 # so the app's same-origin checks match what the browser sends through the proxy.
+# APP_PROTOCOL=http is only for testing on a laptop at http://localhost:8787.
 exec $WRANGLER dev --config "$CONFIG" --local --persist-to "$STATE_DIR" \
   --ip 0.0.0.0 --port 8787 --inspector-port 0 --show-interactive-dev-session=false \
-  --local-upstream "$APP_DOMAIN" --upstream-protocol https \
+  --local-upstream "$APP_DOMAIN" --upstream-protocol "${APP_PROTOCOL:-https}" \
   --var "OWNER_SETUP_KEY:$OWNER_SETUP_KEY"

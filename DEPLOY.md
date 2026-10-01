@@ -5,6 +5,19 @@ Runs the whole app on one Linux VPS with Docker. No Cloudflare/OpenAI account ne
 - **app**: the built app on `workerd` (Cloudflare's open-source Workers runtime). Database (SQLite) and uploaded photos live in the `appdata` Docker volume.
 - **caddy**: HTTPS certificates (Let's Encrypt) and reverse proxy.
 
+## 0. Test on your own computer first (optional)
+
+Needs Docker Desktop (Mac/Windows) or Docker on Linux.
+
+```bash
+git clone <this repo> hotel-desk && cd hotel-desk
+docker compose -f docker-compose.local.yml up --build
+```
+
+Open **http://localhost:8787** in Chrome → **Owner setup** → setup key `local-test-key`.
+To try the guest side, add a room, check in a guest, open the room's QR link and enter the 6-digit code.
+Stop with Ctrl+C. Data stays in the `localdata` volume; `docker compose -f docker-compose.local.yml down -v` wipes it.
+
 ## 1. Server
 
 - Ubuntu 22.04/24.04, 2 vCPU, 4 GB RAM, 40 GB disk is enough for a pilot (app uses ~400 MB RAM; the image is ~3 GB).

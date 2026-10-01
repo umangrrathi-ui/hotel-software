@@ -1,0 +1,16 @@
+# Test on your own computer (no domain, no HTTPS):
+#   docker compose -f docker-compose.local.yml up --build
+# then open http://localhost:8787 in Chrome. Owner setup key: local-test-key
+services:
+  app:
+    build: .
+    environment:
+      APP_DOMAIN: localhost:8787
+      APP_PROTOCOL: http
+      OWNER_SETUP_KEY: local-test-key
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - localdata:/data
+volumes:
+  localdata:
