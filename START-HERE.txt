@@ -1,0 +1,16 @@
+Hotel Service Desk - source export
+
+Source commit: cef7e7078465d1194519a04e6f23f0a83159ef08
+
+Read README.md for features, setup workflow and test coverage.
+The complete application source, package lockfile, database migrations and tests are included.
+Dependencies, database records, uploaded photos, local caches and credentials are not included.
+
+This version targets Sites/Cloudflare Workers with D1 and R2, and uses ChatGPT staff sign-in.
+A regular VPS/cPanel deployment requires adapting the runtime bindings, database/storage and staff authentication. It is not a static HTML upload.
+
+Developer prerequisites: Node.js >=22.13 and the pnpm version specified in package.json.
+Install dependencies with pnpm install --frozen-lockfile.
+Run API integration tests with node tests/desk-api.mjs.
+Run type checks with node node_modules/typescript/bin/tsc --noEmit.
+Hosting-specific build scripts and configuration are included; configure the target environment before running them.

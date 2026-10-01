@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `stays_active_room` ON `stays` (`room`) WHERE "stays"."active" = 1;

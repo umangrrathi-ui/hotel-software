@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync,readdirSync,mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+const esbuildPath=readdirSync('node_modules/.pnpm').filter(n=>n.startsWith('esbuild@')).sort().at(-1);
+const {build}=await import(resolve('node_modules/.pnpm',esbuildPath,'node_modules/esbuild/lib/main.js'));
+const db=new DatabaseSync(':memory:');
+for(const f of readdirSync('drizzle').filter(f=>f.endsWith('.sql')).sort())db.exec(readFileSync('drizzle/'+f,'utf8'));
+class Statement{constructor(sql){this.sql=sql;this.args=[]}bind(...a){this.args=a;return this}first(){return db.prepare(this.sql).get(...this.args)||null}all(){return {results:db.prepare(this.sql).all(...this.args)}}run(){return {meta:{changes:Number(db.prepare(this.sql).run(...this.args).changes)}}}}
+globalThis.testEnv={DB:{prepare:s=>new Statement(s),async batch(ops){db.exec('BEGIN');try{let result=ops.map(o=>o.run());db.exec('COMMIT');return result}catch(e){db.exec('ROLLBACK');throw e}}}};
+globalThis.testUser={userId:'owner',email:'owner@example.test',displayName:'Owner'};
+const owner=globalThis.testUser;let jar=new Map();globalThis.testCookies={get:k=>jar.has(k)?{value:jar.get(k)}:undefined,set:(k,v)=>jar.set(k,v)};
+const dir=mkdtempSync(join(tmpdir(),'hotel-api-test-'));
+await build({entryPoints:['app/api/desk/route.ts'],outfile:join(dir,'route.mjs'),platform:'node',format:'esm',bundle:true,logLevel:'silent',plugins:[{name:'test-boundaries',setup(b){b.onResolve({filter:/^(cloudflare:workers|next\/headers|@\/app\/chatgpt-auth)$/},a=>({path:a.path,namespace:'test'}));b.onLoad({filter:/.*/,namespace:'test'},a=>({contents:a.path==='cloudflare:workers'?'export const env=globalThis.testEnv':a.path==='next/headers'?'export async function cookies(){return globalThis.testCookies}':'export async function getChatGPTUser(){return globalThis.testUser}',loader:'js'}))}}]});
+const {GET,POST}=await import(join(dir,'route.mjs'));let assertions=0;
+async function post(body,status=200){const r=await POST(new Request('https://hotel.test/api/desk',{method:'POST',headers:{'content-type':'application/json','origin':'https://hotel.test'},body:JSON.stringify(body)}));const data=await r.json();assert.equal(r.status,status,JSON.stringify(data));assertions++;return data}
+async function get(query='',status=200){const r=await GET(new Request('https://hotel.test/api/desk'+query));const data=await r.json();assert.equal(r.status,status,JSON.stringify(data));assertions++;return data}
+const row=(table,id)=>db.prepare('SELECT * FROM '+table+' WHERE id=?').get(id);
+try{
+const hotel=(await post({action:'createHotel',name:'Test Hotel'})).id;
+await post({action:'room',hotel,label:'101',kind:'room'});await post({action:'room',hotel,label:'Lobby',kind:'public'});
+let state=await get('?hotel='+hotel);let room=state.rooms.find(r=>r.kind==='room'),pub=state.rooms.find(r=>r.kind==='public');
+await post({action:'member',hotel,name:'Employee',email:'staff@example.test',role:'staff',department:'Housekeeping'});
+await post({action:'member',hotel,name:'Travel head',email:'head@example.test',role:'head',department:'Travel'});
+await post({action:'service',hotel,name:'Laundry',category:'Laundry',department:'Housekeeping',status:'published',config:{mode:'Per item',price:100,tax:5,fee:10}});
+state=await get('?hotel='+hotel);let service=state.services[0],staff=state.members.find(m=>m.role==='staff'),admin=state.members.find(m=>m.role==='admin');
+let stay=await post({action:'checkin',hotel,room:room.id,name:'Guest One',checkout:new Date(Date.now()+86400000).toISOString()});
+await post({action:'checkin',hotel,room:room.id,name:'Duplicate',checkout:new Date(Date.now()+86400000).toISOString()},400);
+globalThis.testUser=null;
+assert.equal((await get('?action=guest&qr='+pub.qr)).services.length,0);
+await post({action:'unlock',qr:pub.qr,pin:stay.pin},403);await post({action:'submit',qr:pub.qr,items:[{id:service.id,qty:1}],retry:'public'},403);
+await post({action:'submit',qr:room.qr,items:[{id:service.id,qty:1}],retry:'locked'},401);
+await post({action:'unlock',qr:room.qr,pin:'wrong'},401);await post({action:'unlock',qr:room.qr,pin:stay.pin});
+let order={action:'submit',qr:room.qr,items:[{id:service.id,qty:2,price:1}],retry:'same',total:1};
+let rid=(await post(order)).id;assert.equal((await post(order)).id,rid);assert.equal(row('requests',rid).total,22000);
+const change=async(action,fields={},status=200)=>post({action,hotel,id:rid,version:row('requests',rid).version,...fields},status);
+globalThis.testUser={userId:'intruder',email:'intruder@example.test',displayName:'Other'};await get('?hotel='+hotel,403);
+globalThis.testUser={userId:'head',email:'head@example.test',displayName:'Travel head'};await change('assign',{assignee:staff.id},404);
+globalThis.testUser=owner;await change('assign',{assignee:staff.id});
+globalThis.testUser={userId:'employee',email:'staff@example.test',displayName:'Employee'};
+await change('assign',{assignee:admin.id},403);await change('transition',{status:'Acknowledged'});
+assert.equal(db.prepare('SELECT count(*) AS n FROM charges WHERE request=?').get(rid).n,1);
+await change('transition',{status:'In progress'});await change('transition',{status:'Done'});await change('transition',{status:'Completed'},403);
+assert.equal(db.prepare('SELECT count(*) AS n FROM charges WHERE request=?').get(rid).n,1);
+globalThis.testUser=owner;await post({action:'checkout',hotel,id:stay.id},400);await change('transition',{status:'Completed'});
+await change('transition',{status:'Cancelled',reason:'Correction',version:1},409);
+assert.equal((await get('?action=guest&qr='+room.qr)).charges[0].amount,22000);
+await post({action:'service',hotel,name:'Airport cab',category:'Transport',department:'Travel',status:'published',config:{mode:'Quote required'}});
+state=await get('?hotel='+hotel);let cab=state.services.find(s=>s.name==='Airport cab');
+globalThis.testUser=null;rid=(await post({action:'submit',qr:room.qr,items:[{id:cab.id,qty:1}],retry:'cab'})).id;
+globalThis.testUser=owner;await change('assign',{assignee:admin.id});await change('transition',{status:'Acknowledged'},400);await change('quote',{total:1500,reason:'Sedan, tolls included'});
+globalThis.testUser=null;await change('transition',{qr:room.qr,status:'Approved'});
+globalThis.testUser=owner;await change('transition',{status:'Confirmed',reason:'Driver confirmed'});assert.equal(db.prepare('SELECT amount FROM charges WHERE request=?').get(rid).amount,150000);
+await change('transition',{status:'Cancelled',reason:'Guest cancelled'});assert.equal(db.prepare('SELECT voided FROM charges WHERE request=?').get(rid).voided,1);
+await post({action:'checkout',hotel,id:stay.id});assert.equal((await get('?action=guest&qr='+room.qr)).unlocked,false);
+await post({action:'unlock',qr:room.qr,pin:stay.pin},401);assert.equal(db.prepare('SELECT count(*) AS n FROM charges WHERE stay=?').get(stay.id).n,2);
+await post({action:'payment',hotel},400);
+const stay2=await post({action:'checkin',hotel,room:room.id,name:'Guest Two',checkout:new Date(Date.now()+86400000).toISOString()});await post({action:'unlock',qr:room.qr,pin:stay2.pin});assert.equal((await get('?action=guest&qr='+room.qr)).requests.length,0);
+const pin=await post({action:'resetPin',hotel,id:stay2.id});assert.equal((await get('?action=guest&qr='+room.qr)).unlocked,false);await post({action:'unlock',qr:room.qr,pin:pin.pin});
+console.log(`PASS: ${assertions} API status assertions plus pricing, isolation, duplicate-charge, quote, checkout and PIN checks.`);
+}finally{db.close();rmSync(dir,{recursive:true,force:true})}
