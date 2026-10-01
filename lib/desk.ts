@@ -15,3 +15,5 @@ export async function rate(key:string,limit=12){await run('INSERT INTO limits VA
 export const configDefault={wifi:'',password:'',phone:'',address:'',breakfast:'',pool:'',gym:'',checkout:'11:00',policies:'',currency:'INR',timezone:'Asia/Kolkata',accent:'#2459de',image:'',welcome:'Make yourself at home.'};
 export const departments=['Reception','Housekeeping','Food & Beverage','Maintenance','Travel','Wellness'];
 export const categories=['Room essentials','Housekeeping','Food & drinks','Laundry','Maintenance','Transport','Tours & guides','Activities','Spa & wellness','Celebrations','Reception'];
+// Behind the bundled Caddy proxy the real client IP arrives as X-Real-IP (Caddy overwrites any client value).
+export const clientIp=(req:Request)=>req.headers.get('x-real-ip')||req.headers.get('cf-connecting-ip')||'local';

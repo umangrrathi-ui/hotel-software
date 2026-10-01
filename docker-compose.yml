@@ -1,0 +1,32 @@
+# Hotel Service Desk on one VPS: app (workerd + SQLite + file storage) behind Caddy (automatic HTTPS).
+# Setup: cp .env.example .env, fill it in, point your domain's DNS A record at this server, then
+#   docker compose up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - appdata:/data          # database + uploaded photos (back this up)
+      - ./backups:/backups
+    expose:
+      - "8787"                 # only Caddy can reach the app
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - app
+
+volumes:
+  appdata:
+  caddydata:
+  caddyconfig:

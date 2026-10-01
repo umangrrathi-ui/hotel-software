@@ -1,0 +1,8 @@
+# Automatic HTTPS for APP_DOMAIN (set in .env). The domain's DNS must point at this server first.
+{$APP_DOMAIN} {
+	encode gzip
+	reverse_proxy app:8787 {
+		# Overwrite any client-sent value so rate limits see the real visitor IP.
+		header_up X-Real-IP {remote_host}
+	}
+}

@@ -6,11 +6,11 @@ Read README.md for features, setup workflow and test coverage.
 The complete application source, package lockfile, database migrations and tests are included.
 Dependencies, database records, uploaded photos, local caches and credentials are not included.
 
-This version targets Sites/Cloudflare Workers with D1 and R2, and uses ChatGPT staff sign-in.
-A regular VPS/cPanel deployment requires adapting the runtime bindings, database/storage and staff authentication. It is not a static HTML upload.
+Runs on your own Linux VPS with Docker (workerd + SQLite + local file storage, Caddy for HTTPS) and its own staff email/password login.
+See DEPLOY.md. It is not a static HTML upload and does not run on shared/cPanel hosting.
 
 Developer prerequisites: Node.js >=22.13 and the pnpm version specified in package.json.
 Install dependencies with pnpm install --frozen-lockfile.
-Run API integration tests with node tests/desk-api.mjs.
+Run API integration tests with node tests/desk-api.mjs and node tests/auth-api.mjs.
 Run type checks with node node_modules/typescript/bin/tsc --noEmit.
 Hosting-specific build scripts and configuration are included; configure the target environment before running them.
